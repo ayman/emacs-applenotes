@@ -4,7 +4,7 @@
 
 ;; Author: David A. Shamma
 ;; Version: 0.1
-;; Keywords: apple,notes emacs-applenotes
+;; Keywords: apple,notes,note,emacs-applenotes
 ;; Package-Requires: ((emacs "24"))
 ;; URL: http://github.com/ayman/emacs-applenotes
 
@@ -76,7 +76,7 @@
 
 (defconst applenotes-font-lock-keywords-3
   (append applenotes-font-lock-keywords-2
-          (list '(" : \\(.+\\)$" . applenotes-extra-keywords-face)))
+          (list '("\\(^ Notes.*\\)" . applenotes-extra-keywords-face)))
   "Additional Keywords to highlight in applenotes mode")
 
 (defvar applenotes-font-lock-keywords applenotes-font-lock-keywords-3
@@ -115,6 +115,23 @@
 	end repeat
     end tell")))
 
+(defun applenotes--get-all-notes ()
+  "docstring"
+  (do-applescript (concat
+   "tell application \"Notes\"
+	set noteList to \"\"
+	repeat with n in every note
+		set f to (container of n) 
+                set fn to (name of f)
+		set fi to (id of f) 
+		set k to (container of f)
+		set kn to (name of k)
+		set ki to (id of k)
+		set noteList to noteList & kn & \"\t\" & ki & \"\t\" & fn & \"\t\" & fi & \"\t\" & name of n & \"\t\" & id of n & \"\t\" & modification date of n & \"\n\"
+       end repeat
+    end tell"
+  )))
+
 (defun applenotes--get-note-body (location)
   "docstring"
   (do-applescript (concat
@@ -131,12 +148,12 @@
         set body of n to \"" body "\"        
     end tell")))
 
-(defun applenotes-account-list ()
+(defun applenotes-all-accounts ()
   "Show the list of list of notes"
   (interactive)
   (let* ((notes-list-raw (applenotes--get-account-list))
          (notes-list (substring notes-list-raw 1 -2))
-         (lines (split-string notes-list "\n"))
+         (lines (sort (split-string notes-list "\n") 'string<))
          (accounts-buffer-name "*Apple Notes Accounts List*")
          (accounts-buffer (get-buffer-create accounts-buffer-name)))
     (with-current-buffer accounts-buffer
@@ -175,7 +192,6 @@
 
 (defun applenotes--notes-list (folder name parent)
   "Show the list of list of notes"
-  (interactive)
   (let* ((notes-list-raw (applenotes--get-notes-list folder))
          (notes-list (substring notes-list-raw 1 -2))
          (lines (split-string notes-list "\n"))
@@ -207,6 +223,70 @@
       (applenotes-mode))
     (other-window 1)))
 
+(defun applenotes-all-notes ()
+  "Show the list of list of notes"
+  (interactive)
+  (let* ((notes-list-raw (applenotes--get-all-notes))
+         (notes-list (substring notes-list-raw 1 -2))
+         (lines (split-string notes-list "\n"))
+         (notes-buffer-name (concat "*Apple Notes - All Notes*")))
+    (with-current-buffer (get-buffer-create notes-buffer-name)
+      (switch-to-buffer notes-buffer-name)
+      (read-only-mode 0)
+      (erase-buffer)
+      (while lines        
+        (let* ((l  (car lines))
+               (ll (split-string l "\t"))
+               (account-name (car ll))
+               (account-id (cadr ll))
+               (folder-name (caddr ll))
+               (folder-id (cadddr ll))
+               (title (car (cddddr ll)))
+               (location (cadr (cddddr ll)))
+               (mod-date (caddr (cddddr ll))))
+          (insert " + ")
+          (insert-button title
+                         'follow-link t
+                         'help-echo (concat "Modified: " mod-date)
+                         'name title
+                         'link location
+                         'action (lambda (b)
+                                   (applenotes--note-open
+                                    (button-get b 'link)
+                                    (button-get b 'name))))
+          (insert (concat " (in "))
+          (insert-button folder-name
+                         'follow-link t
+                         'name title
+                         'link location
+                         'folder-name folder-name
+                         'folder-id folder-id
+                         'account-id  account-id
+                         'account-name  account-name
+                         'action (lambda (b)
+                                   (applenotes--notes-list
+                                    (button-get b 'folder-id)
+                                    (button-get b 'folder-name)
+                                    (button-get b 'account-id))))
+          (insert " of ")
+          (insert-button account-name
+                         'follow-link t
+                         'name title
+                         'link location
+                         'folder-name folder-name
+                         'folder-id folder-id
+                         'account-id  account-id
+                         'account-name  account-name
+                         'action (lambda (b)
+                                   (applenotes-account-list)))
+          (insert ")")
+          (insert "\n")
+          (setq lines (cdr lines))))
+      (goto-char (point-min))
+      (read-only-mode)
+      (applenotes-mode))
+    (other-window 1)))
+
 ;; save the location somewhere hidden if we can ya?
 (defun applenotes--note-open (location title)
   (let* ((note-body-raw (applenotes--get-note-body location))
@@ -215,26 +295,18 @@
          (note-buffer (get-buffer-create note-buffer-name)))
     (with-current-buffer note-buffer
       (switch-to-buffer note-buffer)
-      (setq major-mode 'markdown-mode)
-      (set (make-local-variable 'applenotes--is-note) 't)
-      (set (make-local-variable 'applenotes--loc) location)
-      (set (make-local-variable 'applenotes--name) title)
       (display-buffer note-buffer-name)
       (read-only-mode 0)
       (erase-buffer)
-      (insert (s-replace
-               "\n\n" "\n"
-               (s-replace
-                "</div>" "\n"
-                (s-replace
-                 "<div>" ""
-                 (s-replace
-                  "</div> " "</div>"
-                  (html-to-markdown-string
-                   (substring note-body)))))))
-      (local-set-key "\C-x\C-s" 'applenotes--note-save)
+      (insert (applenotes--make-md-from-html
+               (substring note-body)))
       (goto-char (point-min))
-      (not-modified))
+      (not-modified)
+      (markdown-mode)
+      (set (make-local-variable 'applenotes--is-note) 't)
+      (set (make-local-variable 'applenotes--loc) location)
+      (set (make-local-variable 'applenotes--name) title)      
+      (local-set-key "\C-x\C-s" 'applenotes--note-save))
     (other-window 1)))
 
 (defun applenotes--note-save ()
@@ -248,17 +320,35 @@
 (defun applenotes--make-html-from-md (md)
   (let* ((html (s-replace "\n" "</div>\n<div>" md))
          (html (concat "<div>" html "</div>"))
-         (html (s-replace " *" " <b>" html ))
-         (html (s-replace "* " "<\b> " html ))
-         (html (s-replace "*. " "<\b>. " html ))
-         (html (s-replace "*? " "<\b>? " html ))
-         (html (s-replace "*! " "<\b>! " html ))
-         (html (s-replace " _" " <i>" html ))
-         (html (s-replace "_ " " <\i>" html ))
-         (html (s-replace "_. " " <\i>." html ))
-         (html (s-replace "_? " " <\i>?" html ))
-         (html (s-replace "_! " " <\i>!" html )))
+         (html (s-replace " *" " <b>" html))
+         (html (s-replace "* " "</b> " html))
+         (html (s-replace "*. " "</b>. " html))
+         (html (s-replace "*? " "</b>? " html))
+         (html (s-replace "*! " "</b>! " html))
+         (html (s-replace " _" " <i>" html))
+         (html (s-replace "_ " " </i>" html))
+         (html (s-replace "_. " " </i>." html))
+         (html (s-replace "_? " " </i>?" html))
+         (html (s-replace "_! " " </i>!" html)))
     html))
+
+(defun applenotes--make-md-from-html (html)
+  (let* ((md (s-replace "<div>" "" html))
+         (md (s-replace "</div>" "" html))
+         (md (s-replace "<br>" "" html))
+         (md (s-replace "<b>" "*" html))
+         (md (s-replace "</b>" "*" md))
+         (md (s-replace "<i>" "_" md))
+         (md (s-replace "</i>" "_" md))
+         (md (s-replace "<ul>" "" md))
+         (md (s-replace "</ul>" "" md))
+         (md (s-replace "</li>" "" md))        
+         (md (s-replace "<li>" " * " md))
+         (md (s-replace "<h2>" "## " md))
+         (md (s-replace "</h2>" " ##" md))
+         (md (s-replace "<h1>" "# " md))
+         (md (s-replace "</h1>" " #" md)))
+    md))
 
 (provide 'applenotes)
 ;;; applenotes.el ends here
