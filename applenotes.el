@@ -29,6 +29,8 @@
 ;; This package wraps Apple Notes into elisp via AppleScript.
 
 ;;; Code:
+(eval-when-compile (require 'markdown-mode))
+
 (defgroup applenotes nil
   "Interact with Apple Notes through emacs."
   :group 'tools
@@ -96,7 +98,7 @@
 
 ;;;###autoload
 (defun applenotes--get-account-list ()
-  "Docstring."
+  "Applescript to get the accounts and folders."
   (do-applescript
    "tell application \"Notes\"
 	set noteList to \"\"
@@ -107,7 +109,7 @@
    end tell"))
 
 (defun applenotes--get-notes-list (location)
-  "Docstring.
+  "Applescript to get notes in a folder.
 Argument LOCATION The core os url (id) to a folder."
   (do-applescript (concat
    "tell application \"Notes\"
@@ -118,7 +120,7 @@ Argument LOCATION The core os url (id) to a folder."
     end tell")))
 
 (defun applenotes--get-all-notes ()
-  "Docstring."
+  "Applescript to get all notes."
   (do-applescript
    "tell application \"Notes\"
 	set noteList to \"\"
@@ -134,7 +136,7 @@ Argument LOCATION The core os url (id) to a folder."
     end tell"))
 
 (defun applenotes--get-note-body (location)
-  "Docstring.
+  "Applescript to get the note body.
 Argument LOCATION A note id URL."
   (do-applescript (concat
    "tell application \"Notes\"
@@ -143,7 +145,7 @@ Argument LOCATION A note id URL."
     end tell")))
 
 (defun applenotes--set-note-body (location body)
-  "Docstring.
+  "Applescript to save the note.
 Argument LOCATION A note id URL.
 Argument BODY Note body in HTML format."
   (do-applescript (concat
@@ -170,7 +172,8 @@ Argument MD A string in markdown format."
     html))
 
 (defun applenotes--make-md-from-html (html)
-  "Convert HTML tring to markdown."
+  "Convert HTML tring to markdown.
+Argument HTML A string in HTML format."
 (let* ((md (s-replace "<div>" "" html))
          (md (s-replace "</div>" "" html))
          (md (s-replace "<br>" "" html))
