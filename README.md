@@ -33,6 +33,6 @@ your own keybindings for each command, like so:
 ## Alternatives/Inspiration
 You can check
 out
-[emacs-geeknote](https://github.com/https://github.com/avendael/emacs-geeknote) if
+[emacs-geeknote](https://github.com/avendael/emacs-geeknote) if
 you use evernote/geeknote.  I used to use it before evernote changed
 its policy. Also I took some of the code I contributed there to make this package.
