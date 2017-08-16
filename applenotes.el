@@ -30,6 +30,7 @@
 
 ;;; Code:
 (eval-when-compile (require 'markdown-mode))
+(require 'ido)
 
 (defgroup applenotes nil
   "Interact with Apple Notes through emacs."
@@ -48,6 +49,7 @@
     (define-key map "q" 'kill-this-buffer)
     (define-key map "j" 'next-line)
     (define-key map "k" 'previous-line)
+    (define-key map "g" 'applenotes--refresh-buffer)
     map)
   "Keymap for AppleNotes major mode.")
 
@@ -108,6 +110,30 @@
 	return noteList
    end tell"))
 
+(defun applenotes--get-account-names ()
+  "Get a list of all the account names."
+  (do-applescript
+   "tell application \"Notes\"
+	set accountList to \"\"
+	set al to name of every account
+	repeat with a in al
+		set accountList to accountList & a & \"\n\"
+	end repeat
+    end tell"))
+
+(defun applenotes--get-folder-names (account)
+  "Get a list of all the ACCOUNT names."
+  (do-applescript (concat
+    "tell application \"Notes\"
+	set accountName to \"" account "\"
+	set folderNames to name of every folder in account accountName
+	set folderList to \"\"
+	repeat with f in folderNames
+		set folderList to folderList & f & \"\n\"
+	end repeat
+	return folderList
+    end tell")))
+
 (defun applenotes--get-notes-list (location)
   "Applescript to get notes in a folder.
 Argument LOCATION The core os url (id) to a folder."
@@ -154,6 +180,16 @@ Argument BODY Note body in HTML format."
         set body of n to \"" body "\"
     end tell")))
 
+(defun applenotes--create-note (account folder title)
+  "Create a new note in the ACCOUNT of a FOLDER with a TITLE."
+  (do-applescript (concat
+    "tell application \"Notes\"
+         tell account \"" account "\"
+            set n to make new note at folder \"" folder "\" with properties {name:\"" title "\"}
+            return id of n
+         end tell
+     end tell")))
+
 (defun applenotes--make-html-from-md (md)
   "Convert markdown string to HTML.
 Argument MD A string in markdown format."
@@ -175,21 +211,25 @@ Argument MD A string in markdown format."
   "Convert HTML tring to markdown.
 Argument HTML A string in HTML format."
 (let* ((md (s-replace "<div>" "" html))
-         (md (s-replace "</div>" "" html))
-         (md (s-replace "<br>" "" html))
-         (md (s-replace "<b>" "*" html))
-         (md (s-replace "</b>" "*" md))
-         (md (s-replace "<i>" "_" md))
-         (md (s-replace "</i>" "_" md))
-         (md (s-replace "<ul>" "" md))
-         (md (s-replace "</ul>" "" md))
-         (md (s-replace "</li>" "" md))
-         (md (s-replace "<li>" " * " md))
-         (md (s-replace "<h2>" "## " md))
-         (md (s-replace "</h2>" " ##" md))
-         (md (s-replace "<h1>" "# " md))
-         (md (s-replace "</h1>" " #" md)))
-    md))
+       (md (s-replace "</div>" "" md))
+       (md (s-replace "<b><br></b>" "\n" md))
+       (md (s-replace " " " " md))
+       (md (s-replace "<br>" "\n" md))
+       (md (s-replace "<b>" "*" md))
+       (md (s-replace "</b>" "*" md))
+       (md (s-replace "<i>" "_" md))
+       (md (s-replace "</i>" "_" md))
+       (md (s-replace "<ul>" "" md))
+       (md (s-replace "</ul>" "" md))
+       (md (s-replace "</li>" "" md))
+       (md (s-replace "<li>" " * " md))
+       (md (s-replace "<b><h2>" "## " md))
+       (md (s-replace "</h2></b>" " ##" md))
+       (md (s-replace "<b><h1>" "# " md))
+       (md (s-replace "</h1></b>" " #" md))
+       (md (s-replace "<h1>" "# " md))
+       (md (s-replace "</h1>" " #" md)))
+  md))
 
 (defun applenotes--notes-list (folder name parent)
   "Show the list of list of notes.
@@ -325,7 +365,7 @@ Argument TITLE Title of the note (for the modeline)."
                                    (applenotes--note-open
                                     (button-get b 'link)
                                     (button-get b 'name))))
-          (insert (concat " (in "))
+          (insert (concat "\n   (in "))
           (insert-button folder-name
                          'follow-link t
                          'name title
@@ -366,6 +406,30 @@ Argument TITLE Title of the note (for the modeline)."
                            (applenotes--make-html-from-md (buffer-string)))
     (not-modified)
         (message (concat "Saved Apple Note: " applenotes--name))))
+
+(defun applenotes-new-note ()
+  "Create a new note in an account and list.
+You'll have to use a folder and account that is already there for now."
+  (interactive)
+  (let* ((account-list-raw (applenotes--get-account-names))
+         (account-list (substring account-list-raw 1 -2))
+         (accounts (sort (split-string account-list "\n") 'string>))
+         (account (ido-completing-read
+                   "Create note in which account: " accounts))
+         (folders-raw (applenotes--get-folder-names account))
+         (folders-list (substring folders-raw 1 -2))
+         (folders (sort (split-string folders-list "\n") 'string>))
+         (folder (ido-completing-read
+                  (concat "Create note in which folder of " account ":") folders))
+         (title (read-string "Title of new note: "))
+         (location (applenotes--create-note account folder title)))
+    (message location)
+    (applenotes--note-open location title)))
+
+(defun applenotes--refresh-buffer ()
+  "Refresh the current buffer listing."
+  ;; Get TYPE from buffer var if its a proper buffer.
+  (message "Refresh not implemented yet."))
 
 (provide 'applenotes)
 ;;; applenotes.el ends here
