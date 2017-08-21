@@ -3,7 +3,6 @@ Use Apple Notes in Emacs through Applescript.
 
 *This is working but still in progress yo.* A couple of things still not working:
 
-- Can't make a new note.
 - Can't view inline images/attachments.
 - Can't open protected note.
 - List styles are lost (check list, bullet, etc.)

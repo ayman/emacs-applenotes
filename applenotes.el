@@ -174,62 +174,58 @@ Argument LOCATION A note id URL."
   "Applescript to save the note.
 Argument LOCATION A note id URL.
 Argument BODY Note body in HTML format."
-  (do-applescript (concat
-   "tell application \"Notes\"
-	set n to note id \"" location "\"
-        set body of n to \"" body "\"
+  (let* ((escaped-html (s-replace "\"" "\\\"" body))
+         (as (concat "tell application \"Notes\"
+      	set n to note id \"" location "\"
+        set body of n to \"" escaped-html "\"
     end tell")))
+    (message as)
+    (do-applescript as)))
 
 (defun applenotes--create-note (account folder title)
   "Create a new note in the ACCOUNT of a FOLDER with a TITLE."
   (do-applescript (concat
     "tell application \"Notes\"
          tell account \"" account "\"
-            set n to make new note at folder \"" folder "\" with properties {name:\"" title "\"}
+            set n to make new note at folder \"" folder "\" with properties {name:\"" title "\", body:\"<h1>" title "</h1>\"}
             return id of n
          end tell
      end tell")))
 
-(defun applenotes--make-html-from-md (md)
+(defun applenotes--md-to-html (md)
   "Convert markdown string to HTML.
 Argument MD A string in markdown format."
-  (let* ((html (s-replace "\n" "</div>\n<div>" md))
+  (markdown-kill-ring-save)
+  (let* ((html-raw (car kill-ring))
+         (html (substring-no-properties html-raw))
+         (html (s-replace "\n" "</div>\n<div>" html))
          (html (concat "<div>" html "</div>"))
-         (html (s-replace " *" " <b>" html))
-         (html (s-replace "* " "</b> " html))
-         (html (s-replace "*. " "</b>. " html))
-         (html (s-replace "*? " "</b>? " html))
-         (html (s-replace "*! " "</b>! " html))
-         (html (s-replace " _" " <i>" html))
-         (html (s-replace "_ " " </i>" html))
-         (html (s-replace "_. " " </i>." html))
-         (html (s-replace "_? " " </i>?" html))
-         (html (s-replace "_! " " </i>!" html)))
+         (html (s-replace "<div></div>" "" html))
+         (html (s-replace "<div><ul></div>" "<p><ul>" html))
+         (html (s-replace "<div></ul></div>" "</ul></p>" html))
+         (html (s-replace "<div><li>" "<li>" html))
+         (html (s-replace "</li></div>" "</li>" html)))
     html))
-
-(defun applenotes--make-md-from-html (html)
+         
+(defun applenotes--html-to-md (html)
   "Convert HTML tring to markdown.
 Argument HTML A string in HTML format."
-(let* ((md (s-replace "<div>" "" html))
-       (md (s-replace "</div>" "" md))
-       (md (s-replace "<b><br></b>" "\n" md))
-       (md (s-replace " " " " md))
-       (md (s-replace "<br>" "\n" md))
-       (md (s-replace "<b>" "*" md))
-       (md (s-replace "</b>" "*" md))
-       (md (s-replace "<i>" "_" md))
-       (md (s-replace "</i>" "_" md))
-       (md (s-replace "<ul>" "" md))
-       (md (s-replace "</ul>" "" md))
-       (md (s-replace "</li>" "" md))
-       (md (s-replace "<li>" " * " md))
-       (md (s-replace "<b><h2>" "## " md))
-       (md (s-replace "</h2></b>" " ##" md))
-       (md (s-replace "<b><h1>" "# " md))
-       (md (s-replace "</h1></b>" " #" md))
-       (md (s-replace "<h1>" "# " md))
-       (md (s-replace "</h1>" " #" md)))
-  md))
+  (let* ((md (s-replace "<div>" "" html))
+         (md (s-replace "</div>" "" md))
+         (md (s-replace "<h1>" "# " md))
+         (md (s-replace "</h1>" " #" md))
+         (md (s-replace "<b>" "**" md))
+         (md (s-replace "</b>" "**" md))
+         (md (s-replace "<i>" "_" md))
+         (md (s-replace "</i>" "_" md))
+         (md (s-replace "<ul>" "" md))
+         (md (s-replace "</ul>" "" md))
+         (md (s-replace "</li>" "" md))
+         (md (replace-regexp-in-string "^[ \t\r\v\f]*<li>" " * " md))
+         (md (s-replace "<br>" "" md))
+         (md (s-replace "<u>" "" md)) ;; kill underlines
+         (md (s-replace "</u>" "" md)))
+    md))
 
 (defun applenotes--notes-list (folder name parent)
   "Show the list of list of notes.
@@ -281,8 +277,7 @@ Argument TITLE Title of the note (for the modeline)."
       (display-buffer note-buffer-name)
       (read-only-mode 0)
       (erase-buffer)
-      (insert (applenotes--make-md-from-html
-               (substring note-body)))
+      (insert (applenotes--html-to-md note-body))
       (goto-char (point-min))
       (not-modified)
       (markdown-mode)
@@ -402,10 +397,11 @@ Argument TITLE Title of the note (for the modeline)."
   "Save Apple Note IFF it's a Apple Note buffer."
   (interactive)
   (when (local-variable-if-set-p 'applenotes--is-note)
-    (applenotes--set-note-body applenotes--loc
-                           (applenotes--make-html-from-md (buffer-string)))
-    (not-modified)
-        (message (concat "Saved Apple Note: " applenotes--name))))
+    (let* ((html (applenotes--md-to-html (buffer-string))))
+      (message html)
+      (applenotes--set-note-body applenotes--loc html)
+      (not-modified)
+      (message (concat "Saved Apple Note: " applenotes--name)))))
 
 (defun applenotes-new-note ()
   "Create a new note in an account and list.
@@ -429,7 +425,7 @@ You'll have to use a folder and account that is already there for now."
 (defun applenotes--refresh-buffer ()
   "Refresh the current buffer listing."
   ;; Get TYPE from buffer var if its a proper buffer.
-  (message "Refresh not implemented yet."))
+  (message "Refresh applenotes not implemented yet."))
 
 (provide 'applenotes)
 ;;; applenotes.el ends here
