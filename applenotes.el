@@ -86,7 +86,7 @@
 (defvar applenotes-font-lock-keywords applenotes-font-lock-keywords-3
   "Default highlighting expressions for applenotes mode.")
 
-(defun applenotes-mode ()
+(defun applenotes-mode ()  
   "Major mode for navigation Apple Notes mode listings."
   (kill-all-local-variables)
   (use-local-map applenotes-mode-map)
@@ -164,37 +164,46 @@ Argument LOCATION The core os url (id) to a folder."
 (defun applenotes--get-note-body (location)
   "Applescript to get the note body.
 Argument LOCATION A note id URL."
-  (do-applescript (concat
-   "tell application \"Notes\"
-	set n to note id \"" location "\"
-        return body of n
-    end tell")))
+  (let* ((as (concat "tell application \"Notes\"\n"
+		     "set n to note id \"" location "\"\n"
+		     "return body of n\n"
+		     "end tell")))
+    (message as)
+    (do-applescript as)))
 
 (defun applenotes--set-note-body (location body)
   "Applescript to save the note.
 Argument LOCATION A note id URL.
 Argument BODY Note body in HTML format."
-  (let* ((escaped-html (s-replace "\"" "\\\"" body))
-         (as (concat "tell application \"Notes\"
-      	set n to note id \"" location "\"
-        set body of n to \"" escaped-html "\"
-    end tell")))
+  (let* ((qs (regexp-quote "\\\""))
+         (escaped-html (replace-regexp-in-string "\"" qs body))
+         (as (concat "tell application \"Notes\"\n"
+                     "set n to note id \"" location "\"\n"
+                     "set body of n to \"" escaped-html "\"\n"
+                     "end tell")))
+    (message escaped-html)
     (message as)
     (do-applescript as)))
 
 (defun applenotes--create-note (account folder title)
   "Create a new note in the ACCOUNT of a FOLDER with a TITLE."
-  (do-applescript (concat
-    "tell application \"Notes\"
-         tell account \"" account "\"
-            set n to make new note at folder \"" folder "\" with properties {name:\"" title "\", body:\"<h1>" title "</h1>\"}
-            return id of n
-         end tell
-     end tell")))
+  (let* ((as (concat
+	      "tell application \"Notes\"\n"
+              "tell account \"" account "\"\n"
+              "set n to make new note at folder \""
+	      folder "\" with properties {name:\""
+	      title "\", body:\"<h1>"
+	      title "</h1>\"}\n"
+              "return id of n\n"
+              "end tell\n"
+	      "end tell\n")))
+    (do-applescript as)))
 
 (defun applenotes--md-to-html (md)
   "Convert markdown string to HTML.
 Argument MD A string in markdown format."
+  ;; TODO: this pushes to the kill ring...we should pop it.  I dunno if i can
+  ;; just call (setq kill-ring (cdr kill-ring)).
   (markdown-kill-ring-save)
   (let* ((html-raw (car kill-ring))
          (html (substring-no-properties html-raw))
@@ -222,6 +231,8 @@ Argument HTML A string in HTML format."
          (md (s-replace "</ul>" "" md))
          (md (s-replace "</li>" "" md))
          (md (replace-regexp-in-string "^[ \t\r\v\f]*<li>" " * " md))
+	 (md (replace-regexp-in-string "<span .+\">" "" md))
+	 (md (s-replace "</span>" "" md))
          (md (s-replace "<br>" "" md))
          (md (s-replace "<u>" "" md)) ;; kill underlines
          (md (s-replace "</u>" "" md)))
@@ -398,10 +409,11 @@ Argument TITLE Title of the note (for the modeline)."
   (interactive)
   (when (local-variable-if-set-p 'applenotes--is-note)
     (let* ((html (applenotes--md-to-html (buffer-string))))
-      (message html)
+      ;; (message html)
       (applenotes--set-note-body applenotes--loc html)
       (not-modified)
-      (message (concat "Saved Apple Note: " applenotes--name)))))
+      (message (concat "Saved Apple Note: " applenotes--name))))
+  )
 
 (defun applenotes-new-note ()
   "Create a new note in an account and list.
